@@ -4,11 +4,14 @@ import biblioteca.dominio.Emprestimo;
 import biblioteca.dominio.Livro;
 import biblioteca.dominio.SituacaoEmprestimo;
 import biblioteca.dominio.Usuario;
+import biblioteca.dominio.evento.DevolucaoRegistradaEvento;
+import biblioteca.dominio.evento.EmprestimoRealizadoEvento;
 import biblioteca.dominio.porta.entrada.PortaEmprestimo;
 import biblioteca.dominio.porta.saida.PortaEmprestimoRepositorio;
 import biblioteca.dominio.porta.saida.PortaLivroRepositorio;
 import biblioteca.dominio.porta.saida.PortaNotificacao;
 import biblioteca.dominio.porta.saida.PortaUsuarioRepositorio;
+import biblioteca.infraestrutura.evento.EventBus;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -20,16 +23,22 @@ public class EmprestimoServico implements PortaEmprestimo {
     private final PortaUsuarioRepositorio usuarioRepo;
     private final PortaEmprestimoRepositorio emprestimoRepo;
     private final PortaNotificacao notificacao;
+    private final EventBus<EmprestimoRealizadoEvento> busEmprestimo;
+    private final EventBus<DevolucaoRegistradaEvento> busDevolucao;
     private long proximoId = 1;
 
     public EmprestimoServico(PortaLivroRepositorio livroRepo,
                               PortaUsuarioRepositorio usuarioRepo,
                               PortaEmprestimoRepositorio emprestimoRepo,
-                              PortaNotificacao notificacao) {
+                              PortaNotificacao notificacao,
+                              EventBus<EmprestimoRealizadoEvento> busEmprestimo,
+                              EventBus<DevolucaoRegistradaEvento> busDevolucao) {
         this.livroRepo = livroRepo;
         this.usuarioRepo = usuarioRepo;
         this.emprestimoRepo = emprestimoRepo;
         this.notificacao = notificacao;
+        this.busEmprestimo = busEmprestimo;
+        this.busDevolucao = busDevolucao;
     }
 
     @Override
@@ -49,6 +58,10 @@ public class EmprestimoServico implements PortaEmprestimo {
 
         Emprestimo emprestimo = new Emprestimo(proximoId++, livro, usuario, LocalDate.now());
         emprestimoRepo.salvar(emprestimo);
+
+        busEmprestimo.publicar(new EmprestimoRealizadoEvento(
+                emprestimo.getId(), usuarioId, livroId, emprestimo.getDataRetirada()));
+
         return emprestimo;
     }
 
@@ -61,6 +74,9 @@ public class EmprestimoServico implements PortaEmprestimo {
         emprestimo.getLivro().registrarDevolucao();
         livroRepo.salvar(emprestimo.getLivro());
         emprestimoRepo.salvar(emprestimo);
+
+        busDevolucao.publicar(new DevolucaoRegistradaEvento(
+                emprestimoId, LocalDate.now(), emprestimo.getSituacao() == SituacaoEmprestimo.ATRASADO));
     }
 
     @Override
